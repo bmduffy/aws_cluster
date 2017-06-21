@@ -1,0 +1,86 @@
+---
+
+aws:
+  images:
+    centos7: "ami-061b1560"  # Amazon Machine Image ID, Centoz 7 HVM
+
+# Define your Orwellian Cluster as Gaeilge
+# You need a key-pair, a VPC, a subnet, a security group, and some instances
+
+cluster:
+
+  user: "centos"
+
+  key:
+    name: "an_eochair"
+    file: "~/.ssh/id_rsa.pub"
+
+  region: "eu-west-1"
+
+  vpc:
+    name: "feirm_ainmhithe"
+    cidr_block: 10.10.0.0/16
+    subnets:
+      na_anmhithe_eile: 10.10.10.0/24
+      na_muca: 10.10.11.0/24
+    route_table:
+      tags:
+        Name: "Public"
+
+  security:
+    groups:
+      na_madrai:
+        description: "Ceathair cosa maith, dha cosa dona."
+        ingress_rules:
+          - proto: udp
+            from_port: 53
+            to_port: 53
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: 22
+            to_port: 22
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: 53
+            to_port: 53
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: 80
+            to_port: 80
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: 443
+            to_port: 443
+            cidr_ip: 0.0.0.0/0
+          - proto: icmp
+            from_port: -1
+            to_port: -1
+            cidr_ip: 0.0.0.0/0
+        egress_rules:
+          - proto: all
+            from_port: -1
+            to_port: -1
+            cidr_ip: 0.0.0.0/0
+
+  instances:
+
+    muc:
+      type: "t2.micro"
+      image: "{{ aws.images.centos7 }}"
+      count: 1
+      subnet: "na_muca"
+      groups: ["na_muca", "gach_rud"]
+
+    coarach:
+      type:  "t2.micro"
+      image: "{{ aws.images.centos7 }}"
+      count: 3
+      subnet: "na_anmhithe_eile"
+      groups: ["na_caoraigh", "na_anmhithe_eile", "gach_rud"]
+
+    cearc:
+      type: "t2.micro"
+      image: "{{ aws.images.centos7 }}"
+      count: 2
+      subnet: "na_anmhithe_eile"
+      groups: ["na_cearca", "na_anmhithe_eile", "gach_rud"]

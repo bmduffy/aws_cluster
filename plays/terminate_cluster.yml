@@ -1,0 +1,81 @@
+---
+
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+
+    - pause:
+        prompt: "Are you sure you want to terminate this cluster? (y|n)"
+      register: answer
+
+    - name: "You opted not to proceed so ending the play ..."
+      meta: "end_play"
+      when: answer is defined and answer.user_input != "y"
+
+    - name: "Gather ec2 facts for instances"
+      ec2_remote_facts:
+        region: "{{ cluster.region }}"
+        filters:
+          "tag:Cluster": "{{ cluster.vpc.name }}"
+      register: instance_facts
+
+    - name: "Get a list of instance IDs"
+      set_fact:
+        instance_ids: "{{ instance_facts | json_query('instances[].id') }}"
+
+    - name: "Terminate all EC2 instances in the cluster"
+      ec2:
+        state: absent
+        region: "{{ cluster.region }}"
+        instance_ids: "{{ instance_ids }}"
+        wait: yes
+      when: instance_ids
+
+    - name: "Tear down security groups"
+      ec2_group:
+        name: "{{ item }}"
+        region: "{{ cluster.region }}"
+        state: absent
+      with_items: "{{ cluster.security.groups | list }}"
+
+    - name: "Get VPC ID"
+      ec2_vpc_net_facts:
+        region: "{{ cluster.region }}"
+        filters:
+          "tag:Name" : "{{ cluster.vpc.name }}"
+      register: vpc_data
+
+    - set_fact:
+        vpc_id: "{{ vpc_data.vpcs[0].id }}"
+      when: vpc_data.vpcs
+
+    - name: "Tear down IGW"
+      ec2_vpc_igw:
+        vpc_id: "{{ vpc_id }}"
+        region: "{{ cluster.region }}"
+        state: absent
+      when: vpc_data.vpcs
+
+    - name: "Tear down all subnets"
+      ec2_vpc_subnet:
+        state: absent
+        vpc_id: "{{ vpc_id }}"
+        cidr: "{{ item.value }}"
+        region: "{{ cluster.region }}"
+      with_dict: "{{ cluster.vpc.subnets }}"
+      when: vpc_id is defined
+
+    - name: "Tear down VPC"
+      ec2_vpc_net:
+        state: absent
+        name: "{{ cluster.vpc.name }}"
+        region: "{{ cluster.region }}"
+        cidr_block: "{{ cluster.vpc.cidr_block }}"
+      when: vpc_id is defined
+
+    - name: "Remove key-pair"
+      ec2_key:
+        name: "{{ cluster.key.name }}"
+        region: "{{ cluster.region }}"
+        state: absent

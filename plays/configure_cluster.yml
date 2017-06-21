@@ -1,0 +1,11 @@
+---
+
+- include: dynamic_inventory.yml
+
+- hosts: gach_rud
+  user: "{{ cluster.user }}"
+  gather_facts: true
+  tasks:
+
+    - name: "Print the architecture and stuff for each instance"
+      shell: "uname -a"

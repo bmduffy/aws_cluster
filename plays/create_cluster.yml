@@ -1,0 +1,122 @@
+---
+
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+
+    - name: "Ensure public key is present in the environment"
+      ec2_key:
+        name: "{{ cluster.key.name }}"
+        key_material: "{{ item }}"
+        region: "{{ cluster.region }}"
+        state: present
+      with_file: "{{ cluster.key.file }}"
+
+    - name: "Create a Virtual Private Network (VPC) for the cluster"
+      ec2_vpc_net:
+        name: "{{ cluster.vpc.name }}"
+        cidr_block: "{{ cluster.vpc.cidr_block }}"
+        region: "{{ cluster.region }}"
+        state: present
+      register: network_data
+
+    - name: "Get the VPC ID"
+      set_fact:
+        vpc_id: "{{ network_data.vpc.id }}"
+
+    - name: "Create subnets within the VPC network"
+      ec2_vpc_subnet:
+        vpc_id: "{{ vpc_id }}"
+        cidr: "{{ item.value }}"
+        region: "{{ cluster.region }}"
+        resource_tags:
+          Name: "{{ item.key }}"
+          Cluster: "{{ cluster.vpc.name }}"
+        state: present
+      with_dict: "{{ cluster.vpc.subnets }}"
+
+    - name: "Ensure that this vpc has a gateway to the internet (IGW)"
+      ec2_vpc_igw:
+        vpc_id: "{{ vpc_id }}"
+        region: "{{ cluster.region }}"
+        state: present
+      register: igw_data
+
+    - name: "Get the IGW ID"
+      set_fact:
+        igw_id: "{{ igw_data.gateway_id }}"
+
+    - name: "Get the route that has been created for the VPC"
+      ec2_vpc_route_table_facts:
+        region: "{{ cluster.region }}"
+        filters:
+          vpc-id: "{{ vpc_id }}"
+      register: route_data
+
+    - name: "Get the ID of the route table created by default for the VPC"
+      set_fact:
+        route_table_id: "{{ route_data.route_tables[0].id }}"
+
+    - name: "Ensure add routes to the VPC routing table"
+      ec2_vpc_route_table:
+        vpc_id: "{{ vpc_id }}"
+        lookup: "id"
+        route_table_id: "{{ route_table_id }}"
+        region: "{{ cluster.region }}"
+        routes:
+          - dest: "0.0.0.0/0"
+            gateway_id: "{{ igw_id }}"
+        tags: "{{ cluster.vpc.route_table.tags }}"
+
+    - name: "Create security groups for the instances"
+      ec2_group:
+        name: "{{ item.key }}"
+        description: "{{ item.value.description }}"
+        region: "{{ cluster.region }}"
+        rules: "{{ item.value.ingress_rules }}"
+        rules_egress: "{{ item.value.egress_rules }}"
+        vpc_id: "{{ vpc_id }}"
+        state: present
+      with_dict: "{{ cluster.security.groups }}"
+
+    - name: "Get subnet facts"
+      ec2_vpc_subnet_facts:
+        region: "{{ cluster.region }}"
+        filters:
+          "tag:Cluster": "{{ cluster.vpc.name }}"
+      register: ec2_facts
+
+    - name: "Get all subnets associate with the VPC"
+      set_fact:
+        subnets: "{{ subnets | default({}) | combine({ item.tags.Name: item.id }) }}"
+      with_items: "{{ ec2_facts.subnets }}"
+
+    - name: "Provision all instance groups"
+      ec2:
+        image: "{{ item.value.image }}"
+        instance_type: "{{ item.value.type }}"
+        group: "{{ cluster.security.groups | list | join (',') }}"
+        key_name: "{{ cluster.key.name }}"
+        vpc_subnet_id: "{{ subnets[ item.value.subnet ] }}"
+        assign_public_ip: yes
+        instance_tags:
+          Name: "{{ item.key }}"
+          Cluster: "{{ cluster.vpc.name }}"
+        count_tag:
+          Name: "{{ item.key }}"
+        exact_count: "{{ item.value.count }}"
+        volumes:
+          - device_name: "/dev/sda1"
+            delete_on_termination: yes
+            volume_size: 8
+        region: "{{ cluster.region }}"
+        wait: yes
+      with_dict: "{{ cluster.instances }}"
+
+    - name: "Gather ec2 facts for instances"
+      ec2_remote_facts:
+        region: "{{ cluster.region }}"
+        filters:
+          "tag:Cluster": "{{ cluster.vpc.name }}"
+      register: instance_facts

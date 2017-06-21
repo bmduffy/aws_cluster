@@ -1,0 +1,17 @@
+---
+
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+
+    - name: "Gather ec2 facts for instances"
+      ec2_remote_facts:
+        region: "{{ cluster.region }}"
+      register: the_facts
+
+    - add_host:
+        hostname: "{{ item.public_dns_name }}"
+        groups: "{{ cluster.instances[item.tags.Name].groups | join(',') }}"
+      when: item.tags.Name in cluster.instances
+      with_items: "{{ the_facts.instances }}"
