@@ -41,7 +41,7 @@ region=eu-west-1
 output=text
 ```
 
-## The Playbooks
+## Playbooks
 
 The playbooks setup the simple cluster defined in
 `aws-cluster/group_vars/all/vars.yml`.
