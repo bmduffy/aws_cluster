@@ -21,8 +21,12 @@ cluster:
     name: "feirm_ainmhithe"
     cidr_block: 10.10.0.0/16
     subnets:
-      na_anmhithe_eile: 10.10.10.0/24
-      na_muca: 10.10.11.0/24
+      na_anmhithe_eile:
+          az: "eu-west-1a"
+          cidr_block: 10.10.10.0/24
+      na_muca:
+          az: "eu-west-1b"
+          cidr_block: 10.10.11.0/24
     route_table:
       tags:
         Name: "Public"

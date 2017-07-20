@@ -28,8 +28,9 @@
     - name: "Create subnets within the VPC network"
       ec2_vpc_subnet:
         vpc_id: "{{ vpc_id }}"
-        cidr: "{{ item.value }}"
+        cidr: "{{ item.value.cidr_block }}"
         region: "{{ cluster.region }}"
+        az: "{{ item.value.az }}"
         resource_tags:
           Name: "{{ item.key }}"
           Cluster: "{{ cluster.vpc.name }}"
